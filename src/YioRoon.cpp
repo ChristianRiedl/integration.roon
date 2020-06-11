@@ -27,7 +27,7 @@
 #include "yio-interface/configinterface.h"
 #include "yio-interface/entities/mediaplayerinterface.h"
 
-RoonPlugin::RoonPlugin() : Plugin("roon", NO_WORKER_THREAD), _discovery(m_logCategory) {}
+RoonPlugin::RoonPlugin() : Plugin("roon", USE_WORKER_THREAD), _discovery(m_logCategory) {}
 
 Integration* RoonPlugin::createIntegration(const QVariantMap& config, EntitiesInterface* entities, NotificationsInterface* notifications,
                         YioAPIInterface* api, ConfigInterface* configObj) {
@@ -70,23 +70,20 @@ YioRoon::YioRoon(const QVariantMap& config, EntitiesInterface* entities, Notific
     EAction playAction     = static_cast<EAction>(ACT_PLAYNOW | ACT_ADDNEXT | ACT_QUEUE | ACT_STARTRADIO);
     EAction playFromAction = static_cast<EAction>(playAction | ACT_PLAYFROM);
 
-    //                      ROON                YIO COMMAND     TYPE        PARENTTITLE     ACTION          FORCEDACTION
-    //                      FORCEDCHILDACTION
-    _actions.append(Action("Play Genre", "", "Genre", "Genres", ACT_ACTIONLIST, shuffleAction, shuffleAction));
-    _actions.append(Action("Play Artist", "", "Artist", "Artists", ACT_ACTIONLIST, shuffleAction, playAction));
-    _actions.append(Action("Play Album", "", "Album", "Albums", ACT_ACTIONLIST, playAction, playFromAction));
-    _actions.append(Action("Play Playlist", "", "Playlist", "PlayLists", ACT_ACTIONLIST, shuffleAction,
-                           playFromAction));
-    _actions.append(Action("Play Now", "Play Now", "Track", "Tracks", ACT_PLAYNOW, ACT_NONE, ACT_NONE));
-    _actions.append(Action("Play Now", "Play From", "", "", ACT_PLAYFROM, ACT_NONE, ACT_NONE));
-    _actions.append(Action("Shuffle", "Shuffle", "", "", ACT_SHUFFLE, ACT_NONE, ACT_NONE));
-    _actions.append(Action("Add Next", "Add Next", "", "", ACT_ADDNEXT, ACT_NONE, ACT_NONE));
-    _actions.append(Action("Queue", "Queue", "", "", ACT_QUEUE, ACT_NONE, ACT_NONE));
-    _actions.append(Action("Start Radio", "Start Radio", "", "", ACT_STARTRADIO, ACT_NONE, ACT_NONE));
-    //_actions.append(Action ("TIDAL",            "Search",       "",         "",             ACT_REJECT,     ACT_NONE,
-    // ACT_NONE));
-    _actions.append(Action("Settings", "", "", "", ACT_REJECT, ACT_NONE, ACT_NONE));
-    _actions.append(Action("Tags", "", "", "", ACT_REJECT, ACT_NONE, ACT_NONE));
+    //                      ROON                YIO COMMAND     TYPE        PARENTTITLE     ACTION          FORCEDACTION    FORCEDCHILDACTION   // NOLINT
+    _actions.append(Action("Play Genre",        "",             "Genre",    "Genres",       ACT_ACTIONLIST, shuffleAction,  shuffleAction));    // NOLINT
+    _actions.append(Action("Play Artist",       "",             "Artist",   "Artists",      ACT_ACTIONLIST, shuffleAction,  playAction));       // NOLINT
+    _actions.append(Action("Play Album",        "",             "Album",    "Albums",       ACT_ACTIONLIST, playAction,     playFromAction));   // NOLINT
+    _actions.append(Action("Play Playlist",     "",             "Playlist", "PlayLists",    ACT_ACTIONLIST, shuffleAction,  playFromAction));   // NOLINT
+    _actions.append(Action("Play Now",          "PLAY",         "Track",    "Tracks",       ACT_PLAYNOW,    ACT_NONE,       ACT_NONE));         // NOLINT
+    _actions.append(Action("Play Now",          "Play From",    "",         "",             ACT_PLAYFROM,   ACT_NONE,       ACT_NONE));         // NOLINT
+    _actions.append(Action("Shuffle",           "Shuffle",      "",         "",             ACT_SHUFFLE,    ACT_NONE,       ACT_NONE));         // NOLINT
+    _actions.append(Action("Add Next",          "Add Next",     "",         "",             ACT_ADDNEXT,    ACT_NONE,       ACT_NONE));         // NOLINT
+    _actions.append(Action("Queue",             "QUEUE",        "",         "",             ACT_QUEUE,      ACT_NONE,       ACT_NONE));         // NOLINT
+    _actions.append(Action("Start Radio",       "SONGRADIO",    "",         "",             ACT_STARTRADIO, ACT_NONE,       ACT_NONE));         // NOLINT
+  //_actions.append(Action("TIDAL",             "Search",       "",         "",             ACT_REJECT,     ACT_NONE,       ACT_NONE));         // NOLINT
+    _actions.append(Action("Settings",          "",             "",         "",             ACT_REJECT,     ACT_NONE,       ACT_NONE));         // NOLINT
+    _actions.append(Action("Tags",              "",             "",         "",             ACT_REJECT,     ACT_NONE,       ACT_NONE));         // NOLINT
 
     _reg.display_name    = "YIO Roon Control";
     _reg.display_version = "1.1";
@@ -175,8 +172,6 @@ void YioRoon::sendCommand(const QString& type, const QString& entityId, int cmd,
         "MEDIA_TYPE", "MEDIA_TITLE", "MEDIA_ARTIST", "MEDIA_ALBUM", "MEDIA_DURATION", "MEDIA_POSITION", "MEDIA_IMAGE",
         "PLAY", "PAUSE", "STOP", "PREVIOUS", "NEXT", "SEEK", "SHUFFLE", "TURN_ON", "TURN_OFF"
     */
-    if (m_logCategory.isDebugEnabled())
-        qCDebug(m_logCategory) << "sendCommand " << type << " " << entityId << " " << cmd << " " << param.toString();
 
     int idx;
     for (idx = 0; idx < _contexts.length(); idx++) {
@@ -184,10 +179,15 @@ void YioRoon::sendCommand(const QString& type, const QString& entityId, int cmd,
             break;
     }
     if (idx >= _contexts.length()) {
-        qCWarning(m_logCategory) << "can't find id " << entityId;
+        qCWarning(m_logCategory) << "sendCommand " << "can't find entity id " << entityId;
         return;
     }
     YioContext& ctx = _contexts[idx];
+
+    if (m_logCategory.isDebugEnabled()) {
+        EntityInterface* entity = m_entities->getEntityInterface(ctx.entityId);
+        qCDebug(m_logCategory) << "sendCommand " << type << entityId << entity->getCommandName(cmd) << param.toString();
+    }
 
     const QtRoonTransportApi::Zone& zone = _transportApi.getZone(ctx.zoneId);
     if (zone.outputs.count() == 0) {
@@ -264,20 +264,27 @@ void YioRoon::sendCommand(const QString& type, const QString& entityId, int cmd,
         } break;
         case MediaPlayerDef::C_PLAY_ITEM: {
             QVariantMap map      = param.toMap();
-            QString     pcmd     = map["command"].toString();
-            pcmd                 = "Play Now";  // @@@ temporary
             QString       type   = map["type"].toString();
             QString       key    = map["id"].toString();
-            const Action* action = getActionYio(pcmd);
+            const Action* action = getActionYio(type);
             if (action != nullptr) {
-                ctx.forcedAction = pcmd;
-                playMedia(ctx, key, true);
+                ctx.forcedAction = action->roonName; //type;
             }
+            else if (type == "artist") {
+                ctx.forcedAction = "Play Artist";
+            }
+            else if (type == "album") {
+                ctx.forcedAction = "Play Album";
+            }
+            else if (type == "track") {
+                ctx.forcedAction = "Play Now";
+            }
+            playMedia(ctx, key, true);
         } break;
         case MediaPlayerDef::C_SEARCH_ITEM: {
             QVariantMap map  = param.toMap();
             QString     scmd = map["text"].toString();
-            QString     key  = map["key"].toString();
+            QString     key  = map["id"].toString();
             search(ctx, scmd, key);
         } break;
         case MediaPlayerDef::C_SEARCH:
@@ -515,7 +522,7 @@ void YioRoon::OnLoad(const QString& err, QtRoonBrowseApi::Context& context, cons
             break;
         case PLAY:
             if (result.items.length() > 0) {
-                action = getActionYio(ctx.forcedAction);
+                action = getActionRoon(ctx.forcedAction);
                 if (action != nullptr && !ctx.gotoNext) {
                     QString roonName = ctx.queueFrom ? "Queue" : action->roonName;
                     for (int j = 0; j < result.items.length(); j++) {
@@ -526,9 +533,24 @@ void YioRoon::OnLoad(const QString& err, QtRoonBrowseApi::Context& context, cons
                                 ctx.queueFrom = true;
                                 return;  // Dont clear forced
                             }
-                            ctx.forcedAction = "";
+                            if (ctx.forcedAction == "Play Album")
+                                ctx.forcedAction = "Play Now";
+                            else if (ctx.forcedAction == "Play Artist")
+                                ctx.forcedAction = "Shuffle";
+                            else
+                                ctx.forcedAction = "";
                             return;
                         }
+                    }
+                    // search track
+                    if (result.items.length() == 1 && result.items[0].hint == "action_list" && result.list->hint.isEmpty()) {
+                        if (ctx.handleActionList) {
+                            ctx.handleActionList = false;
+                        } else {
+                            ctx.handleActionList = true;
+                            playMedia(ctx, result.items[0].item_key);
+                        }
+                        return;
                     }
                     // Not found
                     const Action* playAction = getActionRoon(result.items[0].title);
@@ -576,15 +598,23 @@ void YioRoon::OnLoad(const QString& err, QtRoonBrowseApi::Context& context, cons
                     ctx.searchModel = new SearchModel();
                     for (int j = 0; j < result.items.length(); j++) {
                         const QtRoonBrowseApi::BrowseItem& item = result.items.at(j);
-                        if (item.title == "Artists") {
-                            ctx.searchKeys.append(item.item_key);
-                            ctx.searchModel->append(new SearchModelItem("artists", new SearchModelList()));
-                        }
-                        if (item.title == "Albums") {
+                        if (j == 0 /*item.title == "Artists"*/ && item.subtitle.contains("Albums")) {
+                            //ctx.searchKeys.append(item.item_key);
+                            //ctx.searchModel->append(new SearchModelItem("artists", new SearchModelList()));
+                            SearchModelList* list = new SearchModelList();
+                            QString url;
+                            if (item.image_key.isEmpty()) {
+                                url = "qrc:/images/mini-music-player/no_image.png";
+                            } else {
+                                url = _imageUrl + item.image_key + "?scale=fit&width=64&height=64";
+                            }
+                            QStringList commands = {"ARTISTRADIO"};
+                            list->append(SearchModelListItem(item.item_key, "artist", item.title, item.subtitle, url, commands));
+                            ctx.searchModel->append(new SearchModelItem("artists", list));
+                        } else if (item.title == "Albums") {
                             ctx.searchKeys.append(item.item_key);
                             ctx.searchModel->append(new SearchModelItem("albums", new SearchModelList()));
-                        }
-                        if (item.title == "Tracks") {
+                        } else if (item.title == "Tracks") {
                             ctx.searchKeys.append(item.item_key);
                             ctx.searchModel->append(new SearchModelItem("tracks", new SearchModelList()));
                         }
@@ -665,13 +695,15 @@ void YioRoon::OnLoad(const QString& err, QtRoonBrowseApi::Context& context, cons
                 // return of search operation
                 if (ctx.browseModel == nullptr) {
                     QStringList commands = {"PLAY", "SONGRADIO"};
-                    ctx.browseModel = new BrowseModel(nullptr, "", result.list->title, result.list->subtitle, "playlist", "", commands);
+                    QString imageUrl = "qrc:/images/mini-music-player/no_image.png";
+                    ctx.browseModel = new BrowseModel(nullptr, "", result.list->title, result.list->subtitle, "playlist", imageUrl, commands);
                     for (int j = 0; j < result.items.length(); j++) {
                         const QtRoonBrowseApi::BrowseItem& item = result.items[j];
                         if (item.title != "Play Playlist") {
-                            QString imageUrl;
                             if (!item.image_key.isEmpty()) {
                                 imageUrl = _imageUrl + item.image_key + "?scale=fit&width=64&height=64";
+                            } else {
+                                imageUrl = "qrc:/images/mini-music-player/no_image.png";
                             }
                             ctx.browseModel->addItem(item.item_key, item.title, item.subtitle, "track", imageUrl, commands);
                         }
@@ -716,6 +748,7 @@ void YioRoon::OnLoad(const QString& err, QtRoonBrowseApi::Context& context, cons
                             _browseApi.browse(opt, ctx);
                         } else {
                             // found
+                            ctx.albumKey = item.item_key;
                             QtRoonBrowseApi::BrowseOption opt(ctx.zoneId, item.item_key, 0);
                             _browseApi.browse(opt, ctx);
                         }
@@ -809,6 +842,9 @@ void YioRoon::updateItems(YioContext& ctx, const QtRoonBrowseApi::LoadResult& re
         }
     }
 
+    // Clear Model
+    static_cast<ListModel*>(_model.model())->clear();
+
     for (int i = 0; i < result.items.length(); i++) {
         const QtRoonBrowseApi::BrowseItem& item = result.items[i];
         items.append(item);
@@ -859,11 +895,19 @@ void YioRoon::updateItems(YioContext& ctx, const QtRoonBrowseApi::LoadResult& re
         } else {
             url = _imageUrl + item.image_key + "?scale=fit&width=64&height=64";
         }
-        _model.addItem(item.item_key, item.title, item.subtitle, browseType, url, playCommands);
+        QString subTitle = item.subtitle;
+        if (item.input_prompt)
+            subTitle = "<" + item.input_prompt->prompt + ":>";
+        _model.addItem(item.item_key, item.title, subTitle, browseType, url, playCommands);
     }
 
     EntityInterface*      entity      = m_entities->getEntityInterface(ctx.entityId);
     MediaPlayerInterface* mediaPlayer = static_cast<MediaPlayerInterface*>(entity->getSpecificInterface());
+    _model.setType(browseType);
+    _model.setTitle(result.list != nullptr ? result.list->title : "");
+    _model.setLevel(result.list != nullptr ? result.list->level : -1);
+    _model.setCommands(playCommands);
+
     mediaPlayer->setBrowseModel(&_model);
 }
 bool YioRoon::updateSearch(YioContext& ctx, const QtRoonBrowseApi::LoadResult& result) {
@@ -894,24 +938,9 @@ bool YioRoon::updateSearchList(YioContext& ctx, const SearchModelItem* item,
     if (list->rowCount() > 0) {
         return true;  // already filled
     }
-    if (result.list != nullptr && result.list->title.toLower() == item->item_type()) {
+    if (result.list != nullptr && (result.list->title.toLower() == item->item_type() || item->item_type() == "artists")) {
         // Fill list
         QString url;
-        if (item->item_type() == "artists") {
-            QStringList commands = {"ARTISTRADIO"};
-            for (int i = 0; i < result.items.length(); i++) {
-                const QtRoonBrowseApi::BrowseItem& item = result.items.at(i);
-                if (item.image_key.isEmpty()) {
-                    url = "qrc:/images/mini-music-player/no_image.png";
-                } else {
-                    url = _imageUrl + item.image_key + "?scale=fit&width=64&height=64";
-                }
-                SearchModelListItem it =
-                    SearchModelListItem(item.item_key, "artist", item.title, item.subtitle, url, commands);
-                list->append(it);
-            }
-            return true;
-        }
         if (item->item_type() == "albums") {
             QStringList commands = {"PLAY"};
             for (int i = 0; i < result.items.length(); i++) {
@@ -922,13 +951,10 @@ bool YioRoon::updateSearchList(YioContext& ctx, const SearchModelItem* item,
                 } else {
                     url = _imageUrl + item.image_key + "?scale=fit&width=64&height=64";
                 }
-                SearchModelListItem it =
-                    SearchModelListItem(item.item_key, "album", item.title, item.subtitle, url, commands);
-                list->append(it);
+                list->append(SearchModelListItem(item.item_key, "album", item.title, item.subtitle, url, commands));
             }
             return true;
-        }
-        if (item->item_type() == "tracks") {
+        } else if (item->item_type() == "tracks") {
             QStringList commands = {"PLAY"};
             for (int i = 0; i < result.items.length(); i++) {
                 const QtRoonBrowseApi::BrowseItem& item = result.items.at(i);
@@ -937,10 +963,27 @@ bool YioRoon::updateSearchList(YioContext& ctx, const SearchModelItem* item,
                 } else {
                     url = _imageUrl + item.image_key + "?scale=fit&width=64&height=64";
                 }
+                list->append(SearchModelListItem(item.item_key, "track", item.title, item.subtitle, url, commands));
+            }
+            return true;
+        } else if (item->item_type() == "artists") {
+/*
+            QStringList commands = {"ARTISTRADIO"};
+            for (int i = 0; i < result.items.length(); i++) {
+                const QtRoonBrowseApi::BrowseItem& item = result.items.at(i);
+                if (item.subtitle == "0 Albums") {
+                    continue;
+                }
+                if (item.image_key.isEmpty()) {
+                    url = "qrc:/images/mini-music-player/no_image.png";
+                } else {
+                    url = _imageUrl + item.image_key + "?scale=fit&width=64&height=64";
+                }
                 SearchModelListItem it =
-                    SearchModelListItem(item.item_key, "track", item.title, item.subtitle, url, commands);
+                    SearchModelListItem(item.item_key, "artist", item.title, item.subtitle, url, commands);
                 list->append(it);
             }
+*/
             return true;
         }
     }
@@ -960,7 +1003,7 @@ void YioRoon::updateAlbum(YioContext& ctx, const QtRoonBrowseApi::LoadResult& re
         url = _imageUrl + result.list->image_key + "?scale=fit&width=64&height=64";
     }
     BrowseModel* album =
-        new BrowseModel(nullptr, "", result.list->title, result.list->subtitle, "album", url, commands);
+        new BrowseModel(nullptr, ctx.albumKey, result.list->title, result.list->subtitle, "album", url, commands);
 
     for (int i = 0; i < result.items.length(); i++) {
         const QtRoonBrowseApi::BrowseItem& item = result.items.at(i);

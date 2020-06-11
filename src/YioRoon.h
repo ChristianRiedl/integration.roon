@@ -37,7 +37,7 @@
 #include "yio-plugin/integration.h"
 #include "yio-plugin/plugin.h"
 
-const bool NO_WORKER_THREAD = false;
+const bool USE_WORKER_THREAD = false;
 
 class RoonPlugin : public Plugin {
     Q_OBJECT
@@ -122,6 +122,7 @@ class YioRoon : public Integration, IRoonPaired, QtRoonBrowseApi::ICallback {
               itemIndex(-1),
               queueFrom(false),
               gotoNext(false),
+              handleActionList(false),
               entityId(entityId),
               friendlyName(friendlyName),
               searchModel(nullptr),
@@ -130,6 +131,7 @@ class YioRoon : public Integration, IRoonPaired, QtRoonBrowseApi::ICallback {
         int                    itemIndex;
         bool                   queueFrom;
         bool                   gotoNext;
+        bool                   handleActionList;
         BrowseMode             browseMode;
         QString                entityId;
         QString                friendlyName;
@@ -140,6 +142,7 @@ class YioRoon : public Integration, IRoonPaired, QtRoonBrowseApi::ICallback {
         SearchModel*           searchModel;
         BrowseModel*           browseModel;
         QStringList            searchKeys;
+        QString                albumKey;
         QMap<QString, QString> albumMap;
         QMap<QString, QString> listMap;
         int                    goBack;
