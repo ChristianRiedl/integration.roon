@@ -481,7 +481,7 @@ QString QtRoonTransportApi::toString(ELoop loop)
 }
 QString QtRoonTransportApi::toString(EValueMode mode)
 {
-    QMetaEnum metaEnum = getMetaEnum("EVolumeMode");
+    QMetaEnum metaEnum = getMetaEnum("EValueMode");
     return metaEnum.valueToKey(static_cast<int>(mode));
 }
 QString QtRoonTransportApi::toString(EMute mute)
